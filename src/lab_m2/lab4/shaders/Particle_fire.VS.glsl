@@ -45,10 +45,12 @@ void main()
 
     // TODO(student): Compute the new lifetime of the fire particle based on the actual lifetime
     // The lifetime should decrease each frame with deltaTime
+    lifetime -= deltaTime;
     
     // TODO(student): Compute the new position as the sum
     // between the actual position and the speed.
-    //
+    pos += spd * deltaTime;
+
     // Because the y coordinate is already set positive since the
     // initialization performed on the cpu => the fire
     // will go downwards.

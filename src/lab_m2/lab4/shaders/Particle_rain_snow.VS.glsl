@@ -53,7 +53,8 @@ void main()
 
     // TODO(student): Compute the new position as the sum
     // between the actual position and the speed.
-    //
+    pos += spd * deltaTime;
+
     // Because the y coordinate is already set negative since the
     // initialization performed on the cpu => the snow
     // flakes / rain drops will go downwards.

@@ -4,7 +4,7 @@
 // TODO(student): First, generate a curve (via line strip),
 // then a rotation/translation surface (via triangle strip)
 layout(lines) in;
-layout(line_strip, max_vertices = 256) out;
+layout(triangle_strip, max_vertices = 256) out;
 
 // Uniform properties
 uniform mat4 View;
@@ -12,6 +12,9 @@ uniform mat4 Projection;
 uniform vec3 control_p0, control_p1, control_p2, control_p3;
 uniform int no_of_instances;
 // TODO(student): Declare any other uniforms here
+uniform int no_of_generated_points;
+uniform float max_translate;
+uniform float max_rotate;
 
 // Input
 in int instance[2];
@@ -67,14 +70,25 @@ void main()
     // with different transformation types.
     const int SURFACE_TYPE = SURFACE_TYPE_ROTATION;
 
-    if (instance[0] < no_of_instances)
+    const float dt = 1.0f / (no_of_generated_points - 1);
+    const float trans_step = max_translate / (no_of_instances - 1);
+    const float rotate_step = max_rotate / (no_of_instances - 1);
+
+    if (instance[0] < no_of_instances - 1)
     {
         // TODO(student): Rather than emitting vertices for the control
         // points, you must emit vertices that approximate the curve itself.
-        gl_Position = Projection * View * vec4(control_p0, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p1, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p2, 1);   EmitVertex();
-        gl_Position = Projection * View * vec4(control_p3, 1);   EmitVertex();
+        float t = 0.0f;
+        while (t <= 1.0f) {
+            if (SURFACE_TYPE == SURFACE_TYPE_TRANSLATION) {
+                gl_Position = Projection * View * vec4(translateX(bezier(t), trans_step * instance[0]), 1);   EmitVertex();
+                gl_Position = Projection * View * vec4(translateX(bezier(t), trans_step * (instance[0] + 1)), 1);   EmitVertex();
+            } else {
+                gl_Position = Projection * View * vec4(rotateY(bezier(t), rotate_step * instance[0]), 1);   EmitVertex();
+                gl_Position = Projection * View * vec4(rotateY(bezier(t), rotate_step * (instance[0] + 1)), 1);   EmitVertex();
+            }
+            t += dt;
+        }
         EndPrimitive();
 
     }

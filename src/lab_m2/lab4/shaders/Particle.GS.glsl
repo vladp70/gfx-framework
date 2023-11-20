@@ -52,5 +52,25 @@ void main()
     // vert_ilifetime[0] in geom_lifetime and geom_ilifetime
     // Hint: if a point has the coordinates (0,0), then the quad will have the following coords:
     // (-ds,-ds), (ds,-ds), (ds,ds)....
+    
+    texture_coord = vec2(0,0);
+    geom_lifetime = vert_lifetime[0];
+    geom_iLifetime = vert_iLifetime[0];
+    EmitPoint(vec2(-ds,-ds));
+
+    texture_coord = vec2(1,0);
+    geom_lifetime = vert_lifetime[0];
+    geom_iLifetime = vert_iLifetime[0];
+    EmitPoint(vec2(ds,-ds));
+
+    texture_coord = vec2(0,1);
+    geom_lifetime = vert_lifetime[0];
+    geom_iLifetime = vert_iLifetime[0];
+    EmitPoint(vec2(-ds,ds));
+
+    texture_coord = vec2(1,1);
+    geom_lifetime = vert_lifetime[0];
+    geom_iLifetime = vert_iLifetime[0];
+    EmitPoint(vec2(ds,ds));
 
 }

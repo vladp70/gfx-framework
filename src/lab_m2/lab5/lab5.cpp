@@ -93,9 +93,9 @@ void Lab5::Init()
         // The chosen color is between (0, 0, 0) and (1, 1, 1).
         // The chosen radius is between 3 and 4.
 
-        lightInfo.position = glm::vec3(0.0f);
-        lightInfo.color = glm::vec3(0.0f);
-        lightInfo.radius = 1.0f;
+        lightInfo.position = glm::vec3(Rand01() * 20.f - 10.f, Rand01() * 3.f, Rand01() * 20.f - 10.f);
+        lightInfo.color = glm::vec3(Rand01(), Rand01(), Rand01());
+        lightInfo.radius = 3.0f + Rand01();
 
         lights.push_back(lightInfo);
     }
@@ -116,7 +116,7 @@ void Lab5::Update(float deltaTimeSeconds)
         // TODO(student): Move the light sources in an orbit around the center of the scene.
         // The orbit is in the xoz plane. Compute rotationRadians for the current frame 
         // such that the light sources rotate 6 degrees/second. Use deltaTimeSeconds.
-        float rotationRadians = 0.0f;
+        float rotationRadians = RADIANS(6) * deltaTimeSeconds;
 
         glm::mat4 rotateMatrix = glm::rotate(glm::mat4(1.0f), rotationRadians, glm::vec3(0, 1, 0));
         l.position = rotateMatrix * glm::vec4(l.position, 1.0f);
@@ -198,12 +198,15 @@ void Lab5::Update(float deltaTimeSeconds)
         {
             // TODO(student): Set the shader uniforms 'light_position', 'light_color' and 'light_radius'
             // with the values from the light source. Use shader 'shader'.
-            
+            glUniform3fv(shader->GetUniformLocation("light_position"), 1, glm::value_ptr(lightInfo.position));
+            glUniform3fv(shader->GetUniformLocation("light_color"), 1, glm::value_ptr(lightInfo.color));
+            glUniform1f(shader->GetUniformLocation("light_radius"), lightInfo.radius);
 
 
             // TODO(student): Draw the mesh "sphere" at the position of the light source
             // and scaled 2 times the light source radius.
             // Use RenderMesh(mesh, shader, position, scale). Use shader 'shader'.
+            RenderMesh(meshes["sphere"], shader, lightInfo.position, glm::vec3(2 * lightInfo.radius));
 
         }
 

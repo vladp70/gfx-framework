@@ -127,6 +127,9 @@ void Lab2::Update(float deltaTimeSeconds)
     glUniform3f(glGetUniformLocation(shader->program, "control_p2"), control_p2.x, control_p2.y, control_p2.z);
     glUniform3f(glGetUniformLocation(shader->program, "control_p3"), control_p3.x, control_p3.y, control_p3.z);
     glUniform1i(glGetUniformLocation(shader->program, "no_of_instances"), no_of_instances);
+    glUniform1i(glGetUniformLocation(shader->program, "no_of_generated_points"), no_of_generated_points);
+    glUniform1f(glGetUniformLocation(shader->program, "max_translate"), max_translate);
+    glUniform1f(glGetUniformLocation(shader->program, "max_rotate"), max_rotate);
 
     // TODO(student): Send to the shaders the number of points that approximate
     // a curve (no_of_generated_points), as well as the characteristics for
@@ -202,7 +205,18 @@ void Lab2::OnKeyPress(int key, int mods)
     // TODO(student): Use keys to change the number of instances and the
     // number of generated points. Avoid the camera keys, and avoid the
     // the keys from `OnInputUpdate`.
-
+    if (key == GLFW_KEY_UP) {
+        no_of_generated_points++;
+    }
+    if (key == GLFW_KEY_DOWN) {
+        no_of_generated_points--;
+    }
+    if (key == GLFW_KEY_LEFT) {
+        no_of_instances++;
+    }
+    if (key == GLFW_KEY_RIGHT) {
+        no_of_instances--;
+    }
 }
 
 

@@ -17,7 +17,7 @@ layout(location = 0) out vec4 out_color;
 vec3 myReflect()
 {
     // TODO(student): Compute the reflection color value
-    return vec3(0.5);
+    return vec3(texture(texture_cubemap, reflect(world_position - camera_position, world_normal)));
 
 }
 
@@ -25,7 +25,7 @@ vec3 myReflect()
 vec3 myRefract(float refractive_index)
 {
     // TODO(student): Compute the refraction color value
-    return vec3(0.5);
+    return vec3(texture(texture_cubemap, refract(world_position - camera_position, world_normal, 1.0f / refractive_index)));
 
 }
 
