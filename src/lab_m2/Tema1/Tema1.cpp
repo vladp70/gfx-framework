@@ -24,38 +24,37 @@ Tema1::Tema1()
 
 	framebuffer_size = 1024;
 
-	//hmm -> end
+	mirrorPos = glm::vec3(0, 0, -3);
+	mirrorVelocity = glm::vec3(6, 6, 6);
 	mirrorRot = glm::quat();
-	mirrorRotSpeed = glm::radians(60.0f);
-	mirrorPos = glm::vec3(0.f, 0, -2.f);
-	mirrorVelocity = glm::vec3(5.f, 5, 5);
+	mirrorRotSpeed = glm::radians(50.0f);
 
-	nrParticles = 400;
+	nrParticles = 100;
 
 	controlPoints[0] = glm::vec3(0, 0, 0);
-	controlPoints[1] = glm::vec3(1, 6, 2);
-	controlPoints[2] = glm::vec3(4, -2, 2);
-	controlPoints[3] = glm::vec3(7, 8, 0);
+	controlPoints[1] = glm::vec3(1, 3, 1);
+	controlPoints[2] = glm::vec3(2, -1, 1);
+	controlPoints[3] = glm::vec3(4, 4, 0);
 
 	controlPoints[4] = glm::vec3(0, 0, 0);
-	controlPoints[5] = glm::vec3(-1, 6, 0);
-	controlPoints[6] = glm::vec3(-4, -2, 0);
-	controlPoints[7] = glm::vec3(-7, 8, 0);
+	controlPoints[5] = glm::vec3(0, 3, 0);
+	controlPoints[6] = glm::vec3(-2, -1, 0);
+	controlPoints[7] = glm::vec3(-3, 4, 0);
 
 	controlPoints[8] = glm::vec3(0, 0, 0);
-	controlPoints[9] = glm::vec3(1, 6, 0);
-	controlPoints[10] = glm::vec3(5, 8, 0);
-	controlPoints[11] = glm::vec3(7, -9, 0);
+	controlPoints[9] = glm::vec3(1, 3, 0);
+	controlPoints[10] = glm::vec3(2, 4, 0);
+	controlPoints[11] = glm::vec3(3, -4, 0);
 
 	controlPoints[12] = glm::vec3(0, 0, 0);
-	controlPoints[13] = glm::vec3(-1, 2, 5);
-	controlPoints[14] = glm::vec3(4, 5, -2);
-	controlPoints[15] = glm::vec3(-7, 2, 7);
+	controlPoints[13] = glm::vec3(-1, 1, 3);
+	controlPoints[14] = glm::vec3(2, 2, -1);
+	controlPoints[15] = glm::vec3(-3, 1, 4);
 
 	controlPoints[16] = glm::vec3(0, 0, 0);
-	controlPoints[17] = glm::vec3(4, 10, -10);
-	controlPoints[18] = glm::vec3(2, 3, 3);
-	controlPoints[19] = glm::vec3(-7, 8, 0);
+	controlPoints[17] = glm::vec3(2, 5, -5);
+	controlPoints[18] = glm::vec3(1, 2, 1);
+	controlPoints[19] = glm::vec3(-4, 4, 0);
 
 	upVectors = {
 	   glm::vec3(0.0f,-1.0f, 0.0f),
@@ -64,7 +63,6 @@ Tema1::Tema1()
 	   glm::vec3(0.0f, 0.0f, -1.0f),
 	   glm::vec3(0.0f,-1.0f, 0.0f),
 	   glm::vec3(0.0f,-1.0f, 0.0f) };
-
 
 	generator_position = glm::vec3(0);
 }
@@ -315,7 +313,6 @@ void Tema1::Update(float deltaTimeSeconds)
 			glUniform3fv(glGetUniformLocation(shader->GetProgramID(), "up_vectors"), 6, glm::value_ptr(upVectors[0]));
 			glUniform3f(shader->GetUniformLocation("Position"), mirrorPos.x, mirrorPos.y, mirrorPos.z);
 			glUniformMatrix4fv(shader->GetUniformLocation("Projection"), 1, GL_FALSE, glm::value_ptr(projection));
-			glUniform1i(shader->GetUniformLocation("nrParticles"), nrParticles);
 			glUniform3fv(shader->GetUniformLocation("control_points"), 20, glm::value_ptr(controlPoints[0]));
 		}
 
@@ -552,8 +549,9 @@ void m2::Tema1::ResetParticle()
 
 	for (unsigned int i = 0; i < nrParticles; i++)
 	{
-		float lifetime = 4 + 10.0f * (rand() % 100 / 100.0f);
-		float delay = (rand() % 100 / 100.0f) * 3.0f;
+		glm::vec4 speed = glm::vec4(0, rand() % 50 / 25.0f, 0, 0);
+		float lifetime = 3 + 2 * (rand() % 100 / 50.0f);
+		float delay = (rand() % 100 / 50.0f) * 2.0f;
 
 		data[i].initialLifetime = lifetime;
 		data[i].initialDelay = delay;

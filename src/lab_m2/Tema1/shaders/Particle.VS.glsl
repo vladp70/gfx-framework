@@ -9,7 +9,6 @@ layout(location = 2) in vec2 v_texture_coord;
 uniform mat4 Model;
 uniform vec3 generator_position;
 uniform float deltaTime;
-uniform int nrParticles;
 
 uniform vec3 control_points[20];
 
@@ -36,69 +35,39 @@ float rand(vec2 co)
     return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-float factorial(float n)
+vec3 bezier(float t)
 {
-    if (n == 6)
-        return 720;
-    else if (n == 5)
-        return 120;
-    else if (n == 4)
-        return 24;
-    else if (n == 3)
-        return 6;
-    else if (n == 2)
-        return 2;
-    else if (n == 1)
-        return 1;
-    else 
-        return 1;
-}
+    vec3 control_p0 = control_points[gl_VertexID % 5 * 4 + 0];
+    vec3 control_p1 = control_points[gl_VertexID % 5 * 4 + 1];
+    vec3 control_p2 = control_points[gl_VertexID % 5 * 4 + 2];
+    vec3 control_p3 = control_points[gl_VertexID % 5 * 4 + 3];
 
-float bernsteinFunction(int n, int i, float t)
-{
-    return factorial(n) / factorial(i) / factorial(n - i) * pow(t, i) * pow(1 - t, n - i);
-}
-
-vec3 ComputePosition(int id, int n, float t)
-{
-    vec3 pos = vec3(0);
-    for (int i = 0; i <= n; i++)
-    {
-        pos += (bernsteinFunction(n, i, t) * control_points[id * 4 + i]);
-    }
-    
-    return pos;
-}
-
-vec3 trr(float t)
-{
-    vec3 p1 = vec3(0,0,0);
-    vec3 p2 = vec3(1,2,0);
-
-    return p1 + t * (p2 - p1);
+    return  control_p0 * pow((1 - t), 3) +
+            control_p1 * 3 * t * pow((1 - t), 2) +
+            control_p2 * 3 * pow(t, 2) * (1 - t) +
+            control_p3 * pow(t, 3);
 }
 
 void main()
 {
-    /*
     float lifetime = data[gl_VertexID].lifetime;
     float delay = data[gl_VertexID].delay;
 
     delay -= deltaTime;
 
-    if (delay > 0) 
-    {
+    if (delay > 0) {
         data[gl_VertexID].delay = delay;
         gl_Position = Model * vec4(generator_position, 1);
         return;
     }
 
-    lifetime -= deltaTime;
+    if (data[gl_VertexID].speed.y > 0.1)
+        lifetime -= deltaTime * data[gl_VertexID].speed.y;
+    else
+        lifetime -= deltaTime;
 
     float t = (data[gl_VertexID].iLifetime - lifetime) / data[gl_VertexID].iLifetime;
-    int id = int(floor(gl_VertexID / (nrParticles / 5)));
-
-    vec3 pos = ComputePosition(id, 4 - 1, t);
+    vec3 pos = bezier(t);
 
     if(lifetime < 0)
     {
@@ -106,11 +75,9 @@ void main()
         delay = data[gl_VertexID].iDelay;
     }
 
+    data[gl_VertexID].position.xyz = pos + generator_position;
     data[gl_VertexID].lifetime = lifetime;
     data[gl_VertexID].delay = delay;
 
     gl_Position = Model * vec4(pos + generator_position, 1);
-    */
-
-    gl_Position = Model * vec4(v_position, 1); 
 }

@@ -85,10 +85,10 @@ namespace m2
 		glm::vec3 mirrorPos;
 		glm::vec3 mirrorVelocity;
 		
+		int nrParticles;
 		std::array<glm::vec3, 20> controlPoints;
 		std::array<glm::vec3, 6> upVectors;
 		ParticleEffect<Particle>* particleEffect;
 		glm::vec3 generator_position;
-		int nrParticles;
 	};
 }   // namespace m2
