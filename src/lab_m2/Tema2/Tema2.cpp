@@ -2,12 +2,14 @@
 
 #include <vector>
 #include <iostream>
+#include <omp.h>
 
 #include "pfd/portable-file-dialogs.h"
 
 using namespace std;
 using namespace m2;
 
+#define THREAD_NUM 8
 
 /*
  *  To find out more about `FrameStart`, `Update`, `FrameEnd`
@@ -21,7 +23,10 @@ Tema2::Tema2()
     gpuProcessing = false;
     saveScreenToImage = false;
     window->SetSize(600, 566);
-    notNullWatermark = 18128;
+    numWhitePixelsWatermark = 0;
+    blurRadius = 1;
+    binarizationThreshold = 25.f;
+    matchThreshold = 0.95f;
 }
 
 
@@ -32,13 +37,19 @@ Tema2::~Tema2()
 
 void Tema2::Init()
 {
-    // Load default texture fore imagine processing
-    currentFilename = PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "star.png");
+    // Process watermark
     watermark = TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "watermark.png"), nullptr, "watermark", true, true);
-    processedWatermark = TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "watermark.png"), nullptr, "watermark", true, true);
-    originalImage = TextureManager::LoadTexture(currentFilename, nullptr, "image", true, true);
-    processedImage = TextureManager::LoadTexture(currentFilename, nullptr, "newImage", true, true);
-    resultImage = TextureManager::LoadTexture(currentFilename, nullptr, "newImage", true, true);
+    grayscaleWatermark = TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "watermark.png"), nullptr, "gswatermark", true, true);
+    processedWatermark = TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "watermark.png"), nullptr, "reswatermark", true, true);
+    elementSize = glm::ivec2(watermark->GetWidth(), watermark->GetHeight());
+    elementChannels = processedWatermark->GetNrChannels();
+    Frontier(watermark, processedWatermark);
+    numWhitePixelsWatermark = CountWhitePixels(processedWatermark);
+    cout << "White pixels in watermark: " << numWhitePixelsWatermark << endl;
+
+    // Load default texture for imagine processing and process main image
+    currentFilename = PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "star.png");
+    OnFileSelected(currentFilename);
 
     {
         Mesh* mesh = new Mesh("quad");
@@ -91,7 +102,7 @@ void Tema2::Update(float deltaTimeSeconds)
     int locTexture = shader->GetUniformLocation("textureImage");
     glUniform1i(locTexture, 0);
 
-    auto textureImage = (gpuProcessing == true) ? originalImage : processedImage;
+    auto textureImage = (gpuProcessing == true) ? originalImage : displayImage;
     textureImage->BindToTextureUnit(GL_TEXTURE0);
 
     RenderMesh(meshes["quad"], shader, glm::mat4(1));
@@ -106,11 +117,11 @@ void Tema2::Update(float deltaTimeSeconds)
             format = GL_RGBA;
         }
 
-        glReadPixels(0, 0, originalImage->GetWidth(), originalImage->GetHeight(), format, GL_UNSIGNED_BYTE, processedImage->GetImageData());
-        processedImage->UploadNewData(processedImage->GetImageData());
+        glReadPixels(0, 0, displayImage->GetWidth(), displayImage->GetHeight(), format, GL_UNSIGNED_BYTE, displayImage->GetImageData());
+        displayImage->UploadNewData(displayImage->GetImageData());
         SaveImage("shader_processing_" + std::to_string(outputMode));
 
-        float aspectRatio = static_cast<float>(originalImage->GetWidth()) / originalImage->GetHeight();
+        float aspectRatio = static_cast<float>(displayImage->GetWidth()) / displayImage->GetHeight();
         window->SetSize(static_cast<int>(600 * aspectRatio), 600);
     }
 }
@@ -126,12 +137,24 @@ void Tema2::OnFileSelected(const std::string &fileName)
 {
     if (fileName.size())
     {
+        // Init texture
         currentFilename = fileName;
         std::cout << fileName << endl;
-        originalImage = TextureManager::LoadTexture(fileName, nullptr, "image", true, true);
-        processedImage = TextureManager::LoadTexture(fileName, nullptr, "newImage", true, true);
-        resultImage = TextureManager::LoadTexture(fileName, nullptr, "resultImage", true, true);
-        watermark = TextureManager::LoadTexture(PATH_JOIN(window->props.selfDir, RESOURCE_PATH::TEXTURES, "test_images", "watermark.png"), nullptr, "watermark", true, true);
+        originalImage = TextureManager::LoadTexture(currentFilename, nullptr, "image", true, true);
+        grayscaleImage = TextureManager::LoadTexture(currentFilename, nullptr, "gsimage", true, true);
+        processedImage = TextureManager::LoadTexture(currentFilename, nullptr, "newImage", true, true);
+        resultImage = TextureManager::LoadTexture(currentFilename, nullptr, "resultImage", true, true);
+        displayImage = originalImage;
+
+        // Calculate stats
+        imageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
+        imageChannels = processedImage->GetNrChannels();
+        imageRowSize = imageChannels * imageSize.x;
+
+        // Process image
+        GrayScale(originalImage, grayscaleImage);
+        Frontier(originalImage, processedImage);
+        imageProcessed = false;
 
         float aspectRatio = static_cast<float>(originalImage->GetHeight()) / originalImage->GetWidth();
         window->SetSize(600, static_cast<int>(600 * aspectRatio));
@@ -148,17 +171,61 @@ void Tema2::GrayScale(Texture2D* originalImage, Texture2D* processedImage)
     if (channels < 3)
         return;
 
-    glm::ivec2 imageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
+    glm::ivec2 currentImageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
 
-    for (int i = 0; i < imageSize.y; i++)
+    for (int i = 0; i < currentImageSize.y; i++)
     {
-        for (int j = 0; j < imageSize.x; j++)
+        for (int j = 0; j < currentImageSize.x; j++)
         {
-            int offset = channels * (i * imageSize.x + j);
+            int offset = channels * (i * currentImageSize.x + j);
 
             // Reset save image data
             char value = static_cast<char>(data[offset + 0] * 0.2f + data[offset + 1] * 0.71f + data[offset + 2] * 0.07f);
             memset(&newData[offset], value, 3);
+        }
+    }
+
+    processedImage->UploadNewData(newData);
+}
+
+void Tema2::Blur(Texture2D* originalImage, Texture2D* processedImage)
+{
+    unsigned int channels = originalImage->GetNrChannels();
+    unsigned char* data = originalImage->GetImageData();
+    unsigned char* newData = processedImage->GetImageData();
+
+    if (channels < 3)
+        return;
+
+    glm::ivec2 currentImageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
+    int offset = channels * (1 * currentImageSize.x + 1);
+    int idx;
+    float samples = pow((2 * blurRadius + 1), 2);
+
+    for (int i = blurRadius; i < currentImageSize.y - blurRadius; ++i)
+    {
+        offset = channels * i * currentImageSize.x;
+        for (int j = blurRadius; j < currentImageSize.x - blurRadius; ++j)
+        {
+            offset += channels;
+
+            // Apply blur
+            float r, g, b;
+            r = g = b = 0;
+            for (int di = -blurRadius; i <= blurRadius; i++)
+            {
+                for (int dj = -blurRadius; j <= blurRadius; j++)
+                {
+                    idx = channels * ((i + di) * currentImageSize.x + (j + dj));
+                    r += static_cast<float>(data[idx]);
+                    g += static_cast<float>(data[idx + 1]);
+                    b += static_cast<float>(data[idx + 2]);
+                }
+            }
+
+            memset(&newData[offset], static_cast<unsigned char>(r / samples), 1);
+            memset(&newData[offset+1], static_cast<unsigned char>(g / samples), 1);
+            memset(&newData[offset+2], static_cast<unsigned char>(b / samples), 1);
         }
     }
 
@@ -174,25 +241,24 @@ void Tema2::Frontier(Texture2D* originalImage, Texture2D* processedImage)
     if (channels < 3)
         return;
 
-    glm::ivec2 imageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
-
-    int offset = channels * (1 * imageSize.x + 1);
-
-    for (int i = 1; i < imageSize.y - 1; ++i)
+    glm::ivec2 currentImageSize = glm::ivec2(originalImage->GetWidth(), originalImage->GetHeight());
+    
+    #pragma omp parallel shared(currentImageSize, channels, data, newData)
+    for (int i = 1; i < currentImageSize.y - 1; ++i)
     {
-        offset = channels * i * imageSize.x;
-        for (int j = 1; j < imageSize.x - 1; ++j)
+        for (int j = 1; j < currentImageSize.x - 1; ++j)
         {
-            offset += channels;
+            int idx;
+            int offset = channels * (i * currentImageSize.x + j);
 
-            // Apply grayscale
+            // Apply grayscale and Sobel
             float vals[9];
 
             for (int di = -1; di <= 1; di++)
             {
                 for (int dj = -1; dj <= 1; dj++)
                 {
-                    int idx = channels * ((i + di) * imageSize.x + (j + dj));
+                    idx = channels * ((i + di) * currentImageSize.x + (j + dj));
                     vals[3 * (di + 1) + (dj + 1)] =
                         0.21f * data[idx] + 0.71f * data[idx + 1] + 0.07f * data[idx + 2];
                 }
@@ -201,37 +267,41 @@ void Tema2::Frontier(Texture2D* originalImage, Texture2D* processedImage)
             float dx = abs(-vals[0] + vals[2] - 2 * vals[3] + 2 * vals[5] - vals[6] + vals[8]);
             float dy = abs(vals[0] + 2 * vals[1] + vals[2] - vals[6] - 2 * vals[7] - vals[8]);
 
-            float d = dx + dy;
+            float d = sqrt(dx*dx + dy*dy);
 
             // Binarization based on threshold
-            if (d > 0.9f)
+            unsigned char value;
+            if (d > binarizationThreshold)
             {
-                d = 1.0f;
+                value = 255;
             }
             else
             {
-                d = 0.0f;
+                value = 0;
             }
 
             // Set the processed pixel value
-            memset(&newData[offset], static_cast<unsigned char>(d * 255.0f), 3);
+            #pragma omp critical
+            memset(&newData[offset], value, 3);
         }
     }
 
+    int offset;
+
     // Process borders
-    for (int i = 0; i < imageSize.y; i++)
+    for (int i = 0; i < currentImageSize.y; i++)
     {
-        for (int j = 0; j < imageSize.x; j+=imageSize.x - 1)
+        for (int j = 0; j < currentImageSize.x; j+= currentImageSize.x - 1)
         {
-            int offset = channels * (i * imageSize.x + j);
+            offset = channels * (i * currentImageSize.x + j);
             memset(&newData[offset], static_cast<unsigned char>(0), 3);
         }
     }
-    for (int i = 0; i < imageSize.y; i+=imageSize.y - 1)
+    for (int i = 0; i < currentImageSize.y; i+= currentImageSize.y - 1)
     {
-        for (int j = 0; j < imageSize.x; j ++)
+        for (int j = 0; j < currentImageSize.x; j ++)
         {
-            int offset = channels * (i * imageSize.x + j);
+            offset = channels * (i * currentImageSize.x + j);
             memset(&newData[offset], static_cast<unsigned char>(0), 3);
         }
     }
@@ -239,32 +309,86 @@ void Tema2::Frontier(Texture2D* originalImage, Texture2D* processedImage)
     processedImage->UploadNewData(newData);
 }
 
-float Tema2::CheckMatchPercentage(Texture2D* processedImage, Texture2D* processedWatermark, int x, int y) {
-    unsigned int channels = processedImage->GetNrChannels();
-    unsigned int elementChannels = processedWatermark->GetNrChannels();
-    unsigned char* data = processedImage->GetImageData();
-    unsigned char* elementData = processedWatermark->GetImageData();
+float Tema2::CountWhitePixels(Texture2D* processedWatermark) {
+    unsigned int channels = processedWatermark->GetNrChannels();
+    unsigned char* data = processedWatermark->GetImageData();
 
     if (channels < 3)
         return 0.0f;
 
-    glm::ivec2 imageSize = glm::ivec2(processedImage->GetWidth(), processedImage->GetHeight());
     glm::ivec2 elementSize = glm::ivec2(processedWatermark->GetWidth(), processedWatermark->GetHeight());
 
-    int startOffset = channels * (y * imageSize.x + x);
     int offset = 0;
-    int rowSize = channels * imageSize.x;
+    int whitePixels = 0;
+
+    for (int i = 0; i < elementSize.y; ++i)
+    {
+        for (int j = 0; j < elementSize.x; ++j)
+        {
+            if (data[offset] == 255)
+                whitePixels++;
+
+            offset += channels;
+        }
+    }
+
+    return static_cast<float>(whitePixels);
+}
+
+float Tema2::CheckMatchPercentage(unsigned char* data, unsigned char* elementData, int x, int y) {
+    if (imageChannels < 3)
+        return 0.0f;
+
+    int startOffset = imageChannels * (y * imageSize.x + x);
+    int offset = 0;
     int elementOffset = 0;
     int numMatches = 0;
+    int i, j;
+
+    for (i = y; i < y + elementSize.y; ++i)
+    {
+        startOffset = imageChannels * (i * imageSize.x + x);
+        offset = startOffset;
+        for (j = x; j < x + elementSize.x; ++j)
+        {
+            if (elementData[elementOffset] == 255 && data[offset] == 255) {
+                numMatches++;
+            }
+
+            elementOffset += elementChannels;
+            offset += imageChannels;
+        }
+        startOffset += imageRowSize;
+    }
+    
+    if (numMatches) {
+        return numMatches / numWhitePixelsWatermark;
+    }
+    else
+        return 0.0f;
+}
+
+void Tema2::HighlightMatch(Texture2D* originalImage, Texture2D* watermark, int x, int y) {
+    unsigned char* newData = originalImage->GetImageData();
+    unsigned int channels = originalImage->GetNrChannels();
+    unsigned char* elementData = watermark->GetImageData();
+    unsigned int elementChannels = watermark->GetNrChannels();
+
+    if (channels < 3)
+        return;
+
+    int startOffset = channels * (y * imageSize.x + x);
+    int rowSize = channels * imageSize.x;
+    int elementOffset = 0;
+    int offset = 0;
 
     for (int i = y; i < y + elementSize.y; ++i)
     {
         offset = startOffset;
         for (int j = x; j < x + elementSize.x; ++j)
         {
-            if (elementData[elementOffset] && (data[offset] == elementData[elementOffset])) {
-                ++numMatches;
-            }
+            memset(&newData[offset], static_cast<unsigned char>(255.0f), 1);
+            memset(&newData[offset + 1], static_cast<unsigned char>(0.0f), 2);
 
             elementOffset += elementChannels;
             offset += channels;
@@ -272,11 +396,7 @@ float Tema2::CheckMatchPercentage(Texture2D* processedImage, Texture2D* processe
         startOffset += rowSize;
     }
     
-    if (numMatches) {
-        return numMatches / notNullWatermark;
-    }
-    else
-        return 0.0f;
+    originalImage->UploadNewData(newData);
 }
 
 void Tema2::RemoveMatch(Texture2D* originalImage, Texture2D* watermark, int x, int y) {
@@ -301,9 +421,8 @@ void Tema2::RemoveMatch(Texture2D* originalImage, Texture2D* watermark, int x, i
         offset = startOffset;
         for (int j = x; j < x + elementSize.x; ++j)
         {
-            if (elementData[elementOffset] && newData[offset] == elementData[elementOffset]) {
-                memset(&newData[offset], static_cast<unsigned char>(255.0f), 1);
-                memset(&newData[offset + 1], static_cast<unsigned char>(0.0f), 2);
+            for (int rgb = 0; rgb < 3; rgb++) {
+                newData[offset + rgb] = newData[offset + rgb] - elementData[elementOffset + rgb];
             }
 
             elementOffset += elementChannels;
@@ -311,46 +430,44 @@ void Tema2::RemoveMatch(Texture2D* originalImage, Texture2D* watermark, int x, i
         }
         startOffset += rowSize;
     }
-    
+
     originalImage->UploadNewData(newData);
 }
 
 void Tema2::RemoveAllMatches(Texture2D* processedImage, Texture2D* processedWatermark, Texture2D* result)
 {
-    Frontier(originalImage, processedImage);
-    Frontier(watermark, processedWatermark);
-
     int numMatches = 0;
     unsigned int channels = processedImage->GetNrChannels();
     unsigned char* data = processedImage->GetImageData();
     unsigned char* elementData = processedWatermark->GetImageData();
     unsigned char* newData = result->GetImageData();
+    float match = 0;
+    int i, j;
 
     if (channels < 3)
         return;
     else
         cout << "Image has " << channels << " channels." << endl;
 
-    glm::ivec2 imageSize = glm::ivec2(processedImage->GetWidth(), processedImage->GetHeight());
-    glm::ivec2 elementSize = glm::ivec2(processedWatermark->GetWidth(), processedWatermark->GetHeight());
-
-    for (int i = 0; i < imageSize.y - elementSize.y; ++i)
+    for (i = 0; i < imageSize.y - elementSize.y; ++i)
     {
-        for (int j = 0; j < imageSize.x - elementSize.x; ++j)
+        for (j = 0; j < imageSize.x - elementSize.x; ++j)
         {
-            float match = CheckMatchPercentage(processedImage, processedWatermark, j, i);
+            match = CheckMatchPercentage(data, elementData, j, i);
 
-            if (match > 0.3f) {
+            if (match > matchThreshold) {
                 ++numMatches;
                 cout << "Found match " << match <<" at: " << j << ", " << i << endl;
-                RemoveMatch(processedImage, processedWatermark, j, i);
+                RemoveMatch(result, watermark, j, i);
                 j += elementSize.x;
+            }
+            else if (match < 0.1f) {
+                j += elementSize.x / 2;
             }
         }
     }
 
     cout << "Found " << numMatches << " matches total." << endl;
-    //processedImage->UploadNewData(newData);
 }
 
 
@@ -412,22 +529,24 @@ void Tema2::OnKeyPress(int key, int mods)
     if (key - GLFW_KEY_0 >= 0 && key <= GLFW_KEY_4)
     {
         outputMode = key - GLFW_KEY_0;
-        OnFileSelected(currentFilename);
 
         switch (outputMode)
         {
         case 0:
+            displayImage = originalImage;
             break;
         case 1:
-            GrayScale(originalImage, processedImage);
+            displayImage = grayscaleImage;
             break;
         case 2:
-            Frontier(originalImage, processedImage);
-            Frontier(watermark, processedWatermark);
+            displayImage = processedImage;
             break;
         case 3:
-            RemoveAllMatches(processedImage, processedWatermark, resultImage);
-            //processedImage = resultImage;
+            if (!imageProcessed) {
+                RemoveAllMatches(processedImage, processedWatermark, resultImage);
+                imageProcessed = true;
+            }
+            displayImage = resultImage;
             break;
         default:
             break;

@@ -35,19 +35,34 @@ namespace m2
 
         // Processing effects
         void GrayScale(Texture2D* originalImage, Texture2D* processedImage);
+        void Blur(Texture2D* originalImage, Texture2D* processedImage);
         void Frontier(Texture2D* originalImage, Texture2D* processedImage);
         void RemoveAllMatches(Texture2D* processedImage, Texture2D* processedWatermark,Texture2D* result);
-        float CheckMatchPercentage(Texture2D* processedImage, Texture2D* processedWatermark, int x, int y);
+        float CheckMatchPercentage(unsigned char* imageData, unsigned char* elementData, int x, int y);
+        float CountWhitePixels(Texture2D* processedWatermark);
+        void HighlightMatch(Texture2D* originalImage, Texture2D* watermark, int x, int y);
         void RemoveMatch(Texture2D* originalImage, Texture2D* watermark, int x, int y);
         void SaveImage(const std::string &fileName);
 
      private:
         Texture2D *watermark;
+        Texture2D *grayscaleWatermark;
         Texture2D *processedWatermark;
         Texture2D *originalImage;
+        Texture2D *grayscaleImage;
         Texture2D *processedImage;
         Texture2D *resultImage;
-        float notNullWatermark;
+        Texture2D *displayImage;
+        float numWhitePixelsWatermark;
+        int blurRadius;
+        float binarizationThreshold;
+        float matchThreshold;
+        bool imageProcessed;
+        glm::ivec2 imageSize;
+        glm::ivec2 elementSize;
+        int imageRowSize;
+        unsigned int imageChannels;
+        unsigned int elementChannels;
 
         std::string currentFilename;
         int outputMode;
